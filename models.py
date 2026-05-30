@@ -141,15 +141,15 @@ def init_db():
     session = SessionLocal()
 
     # Seed defaults if not present
-        defaults = {
-            "max_posts_per_day": "10",
-            "min_delay_minutes": "15",
-            "safe_mode": "true",
-            "scraper_enabled": "true",
-            "scraper_max_daily": "5",
-            "scraper_min_upvotes": "1000",
-            "scraper_target_account": "",
-        }
+    defaults = {
+        "max_posts_per_day": "10",
+        "min_delay_minutes": "15",
+        "safe_mode": "true",
+        "scraper_enabled": "true",
+        "scraper_max_daily": "5",
+        "scraper_min_upvotes": "1000",
+        "scraper_target_account": "",
+    }
     for key, val in defaults.items():
         if not session.query(SystemSettings).filter(SystemSettings.key == key).first():
             session.add(SystemSettings(key=key, value=val, description=""))
