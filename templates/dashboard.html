@@ -158,7 +158,8 @@
                     </select>
                     <input type="text" name="username" placeholder="Username/Email" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
                     <input type="password" name="password" placeholder="Password" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
-                    <input type="text" name="proxy" placeholder="Proxy (optional) http://user:pass@ip:port" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                                        <input type="text" name="auth_token" placeholder="X Auth Token (optional — skips login)" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                                        <input type="text" name="proxy" placeholder="Proxy (optional) http://user:pass@ip:port" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
                     <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">Save Account</button>
                 </form>
             </div>
@@ -188,12 +189,15 @@
                         </span>
                     </div>
                     <div class="text-xs text-gray-400 space-y-1 mb-3">
-                        {% if acct.proxy_string %}
-                        <p>Proxy: <span class="text-gray-500">{{ acct.proxy_string[:30] }}...</span></p>
-                        {% else %}
-                        <p class="italic">No proxy</p>
-                        {% endif %}
-                    </div>
+                                            {% if acct.auth_token %}
+                                            <p class="text-green-500">✓ Auth token set</p>
+                                            {% endif %}
+                                            {% if acct.proxy_string %}
+                                            <p>Proxy: <span class="text-gray-500">{{ acct.proxy_string[:30] }}...</span></p>
+                                            {% else %}
+                                            <p class="italic">No proxy</p>
+                                            {% endif %}
+                                        </div>
                     <div class="flex gap-2">
                         <form method="post" action="/api/accounts/{{ acct.id }}/toggle" class="inline toggle-form">
                             <button type="submit" class="text-xs font-medium px-3 py-1.5 rounded-lg

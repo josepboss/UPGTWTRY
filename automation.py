@@ -59,6 +59,25 @@ async def _random_scroll(page: Page):
     await asyncio.sleep(_gaussian_delay(0.5, 0.2))
 
 
+async def inject_x_auth(context: BrowserContext, auth_token: str):
+    """
+    Inject the X auth_token cookie into the context for instant authentication.
+    This skips all login challenges, 2FA, and verification.
+    """
+    if not auth_token:
+        return
+    await context.add_cookies([{
+        "name": "auth_token",
+        "value": auth_token,
+        "domain": ".x.com",
+        "path": "/",
+        "httpOnly": True,
+        "secure": True,
+        "sameSite": "Lax",
+    }])
+    print("[Auth] X auth_token injected")
+
+
 # ─── Context Factory ─────────────────────────────────────────────────────────
 
 async def create_context(playwright, profile_dir: str, proxy_string: str = "") -> BrowserContext:
@@ -105,7 +124,7 @@ async def create_context(playwright, profile_dir: str, proxy_string: str = "") -
 
 # ─── X (Twitter) Poster ──────────────────────────────────────────────────────
 
-async def post_to_x(context: BrowserContext, caption: str, media_path: str = "") -> str:
+async def post_to_x(context: BrowserContext, caption: str, media_path: str = "", auth_token: str = "") -> str:
     """
     Post content to X.com using the given persistent context.
     Returns the post URL/id on success, or raises an exception.
@@ -113,6 +132,12 @@ async def post_to_x(context: BrowserContext, caption: str, media_path: str = "")
     page = await context.new_page()
     post_id = ""
     try:
+        # Inject auth_token for instant login (no popup needed)
+        if auth_token:
+            await inject_x_auth(context, auth_token)
+            await page.goto("https://x.com/home", wait_until="networkidle")
+            await asyncio.sleep(_gaussian_delay(1.5, 0.5))
+
         # Navigate to compose
         await page.goto("https://x.com/compose/post", wait_until="networkidle")
         await asyncio.sleep(_gaussian_delay(2.0, 0.5))
@@ -278,16 +303,18 @@ async def post_to_platform(
     proxy_string: str,
     caption: str,
     media_path: str = "",
+    auth_token: str = "",
 ) -> str:
     """
     High-level dispatcher: launches a persistent context, posts to
-    *platform*, and returns the post result.
+    *platform*, and returns the post result. For X accounts, passes
+    *auth_token* for instant cookie-based authentication.
     """
     async with async_playwright() as pw:
         ctx = await create_context(pw, profile_dir, proxy_string)
         try:
             if platform.upper() == "X":
-                return await post_to_x(ctx, caption, media_path)
+                return await post_to_x(ctx, caption, media_path, auth_token)
             elif platform.upper() == "TIKTOK":
                 return await post_to_tiktok(ctx, caption, media_path)
             else:

@@ -151,6 +151,7 @@ async def add_account(
     username: str = Form(...),
     password: str = Form(...),
     proxy: str = Form(""),
+    auth_token: str = Form(""),
 ):
     """Add a new social media account."""
     db = SessionLocal()
@@ -158,13 +159,14 @@ async def add_account(
         # Generate a unique profile folder path
         profile_folder = str(BASE_DIR / "profiles" / f"profile_{uuid.uuid4().hex[:8]}")
         account = Account(
-            platform=platform,
-            username=username,
-            password=password,
-            proxy_string=proxy,
-            profile_folder=profile_folder,
-            status="Paused",
-        )
+                    platform=platform,
+                    username=username,
+                    password=password,
+                    proxy_string=proxy,
+                    auth_token=auth_token,
+                    profile_folder=profile_folder,
+                    status="Paused",
+                )
         db.add(account)
         db.commit()
         add_log("INFO", f"Account added: {platform}/{username}")
@@ -440,12 +442,13 @@ async def process_next_queue_item() -> dict:
         try:
             add_log("INFO", f"Posting to {account.platform} as @{account.username}...")
             post_id = await post_to_platform(
-                platform=account.platform,
-                profile_dir=account.profile_folder,
-                proxy_string=account.proxy_string,
-                caption=item.caption,
-                media_path=processed_media or "",
-            )
+                            platform=account.platform,
+                            profile_dir=account.profile_folder,
+                            proxy_string=account.proxy_string,
+                            caption=item.caption,
+                            media_path=processed_media or "",
+                            auth_token=account.auth_token or "",
+                        )
             item.status = "Posted"
             item.platform_post_id = post_id or ""
             item.log_message = "Posted successfully"
