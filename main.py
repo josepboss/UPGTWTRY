@@ -119,39 +119,39 @@ async def dashboard_page(request: Request):
         safe_mode = SystemSettings.get(db, "safe_mode", "true")
 
         # Recent logs
-                recent_logs = db.query(SystemLog).order_by(SystemLog.id.desc()).limit(30).all()
-        
-                # Scraper data
-                scraper_sources = db.query(TargetSource).order_by(TargetSource.created_at.desc()).all()
-                scrape_logs = db.query(ScrapeLog).order_by(ScrapeLog.id.desc()).limit(20).all()
-                scraper_enabled = SystemSettings.get(db, "scraper_enabled", "true")
-                scraper_max_daily = SystemSettings.get(db, "scraper_max_daily", "5")
-                scraper_min_upvotes = SystemSettings.get(db, "scraper_min_upvotes", "1000")
-                scraper_target_account = SystemSettings.get(db, "scraper_target_account", "")
-        
-                return templates.TemplateResponse("dashboard.html", {
-                    "request": request,
-                    "accounts": accounts,
-                    "queue": queue,
-                    "total_accounts": total_accounts,
-                    "active_accounts": active_accounts,
-                    "paused_accounts": paused_accounts,
-                    "flagged_accounts": flagged_accounts,
-                    "pending_count": pending_count,
-                    "posted_count": posted_count,
-                    "failed_count": failed_count,
-                    "today_posts": today_posts,
-                    "max_posts": max_posts,
-                    "min_delay": min_delay,
-                    "safe_mode": safe_mode,
-                    "recent_logs": recent_logs,
-                    "scraper_sources": scraper_sources,
-                    "scrape_logs": scrape_logs,
-                    "scraper_enabled": scraper_enabled,
-                    "scraper_max_daily": scraper_max_daily,
-                    "scraper_min_upvotes": scraper_min_upvotes,
-                    "scraper_target_account": scraper_target_account,
-                })
+        recent_logs = db.query(SystemLog).order_by(SystemLog.id.desc()).limit(30).all()
+
+        # Scraper data
+        scraper_sources = db.query(TargetSource).order_by(TargetSource.created_at.desc()).all()
+        scrape_logs = db.query(ScrapeLog).order_by(ScrapeLog.id.desc()).limit(20).all()
+        scraper_enabled = SystemSettings.get(db, "scraper_enabled", "true")
+        scraper_max_daily = SystemSettings.get(db, "scraper_max_daily", "5")
+        scraper_min_upvotes = SystemSettings.get(db, "scraper_min_upvotes", "1000")
+        scraper_target_account = SystemSettings.get(db, "scraper_target_account", "")
+
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "accounts": accounts,
+            "queue": queue,
+            "total_accounts": total_accounts,
+            "active_accounts": active_accounts,
+            "paused_accounts": paused_accounts,
+            "flagged_accounts": flagged_accounts,
+            "pending_count": pending_count,
+            "posted_count": posted_count,
+            "failed_count": failed_count,
+            "today_posts": today_posts,
+            "max_posts": max_posts,
+            "min_delay": min_delay,
+            "safe_mode": safe_mode,
+            "recent_logs": recent_logs,
+            "scraper_sources": scraper_sources,
+            "scrape_logs": scrape_logs,
+            "scraper_enabled": scraper_enabled,
+            "scraper_max_daily": scraper_max_daily,
+            "scraper_min_upvotes": scraper_min_upvotes,
+            "scraper_target_account": scraper_target_account,
+        })
     finally:
         db.close()
 
