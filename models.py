@@ -30,8 +30,8 @@ class Account(Base):
                             default=lambda: os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                          "profiles", f"profile_{os.urandom(4).hex()}"))
     proxy_string = Column(String(256), default="")                   # http://user:pass@ip:port
-        auth_token = Column(String(512), default="")                     # X/Twitter auth_token cookie
-        status = Column(String(32), nullable=False, default="Paused")    # Active, Paused, Flagged, Needs Auth
+    auth_token = Column(String(512), default="")                     # X/Twitter auth_token cookie
+    status = Column(String(32), nullable=False, default="Paused")    # Active, Paused, Flagged, Needs Auth
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
