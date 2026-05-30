@@ -1,19 +1,53 @@
-# Tech Stack
+# PostPilot — Social Media Content Automator
 
-- You are building a React application.
-- Use TypeScript.
-- Use React Router. KEEP the routes in src/App.tsx
-- Always put source code in the src folder.
-- Put pages into src/pages/
-- Put components into src/components/
-- The main page (default page) is src/pages/Index.tsx
-- UPDATE the main page to include the new components. OTHERWISE, the user can NOT see any components!
-- ALWAYS try to use the shadcn/ui library.
-- Tailwind CSS: always use Tailwind CSS for styling components. Utilize Tailwind classes extensively for layout, spacing, colors, and other design aspects.
+## Tech Stack
 
-Available packages and libraries:
+- **Backend:** Python FastAPI
+- **Database:** SQLite + SQLAlchemy ORM
+- **Task Queue:** APScheduler (async)
+- **Automation:** Playwright (async API with stealth features)
+- **Frontend:** Jinja2 Templates + Tailwind CSS (CDN)
 
-- The lucide-react package is installed for icons.
-- You ALREADY have ALL the shadcn/ui components and their dependencies installed. So you don't need to install them again.
-- You have ALL the necessary Radix UI components installed.
-- Use prebuilt components from the shadcn/ui library after importing them. Note that these files shouldn't be edited, so make new components if you need to change them.
+## Project Structure
+
+```
+├── main.py              # FastAPI app entry point (routes, scheduler, API)
+├── models.py            # SQLAlchemy database models
+├── editor.py            # FFmpeg media processing engine
+├── automation.py        # Playwright automation for X & TikTok
+├── templates/
+│   └── dashboard.html   # Main admin dashboard
+├── profiles/            # Browser persistent profiles (one per account)
+├── staged/              # Temporary processed media files
+├── static/              # Static assets (images, etc.)
+├── requirements.txt     # Python dependencies
+```
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/dashboard` | Render the dashboard |
+| POST | `/api/accounts/add` | Add a new account |
+| POST | `/api/accounts/{id}/toggle` | Toggle Active/Paused |
+| POST/DELETE | `/api/accounts/{id}/delete` | Remove account |
+| POST | `/api/queue/add` | Queue new content |
+| POST | `/api/queue/{id}/retry` | Retry failed item |
+| POST/DELETE | `/api/queue/{id}/delete` | Delete queue item |
+| POST | `/api/settings/update` | Update global settings |
+| GET | `/api/logs` | Fetch recent system logs |
+| POST | `/api/system/process-queue` | Process next pending item |
+
+## Running
+
+```bash
+pip install -r requirements.txt
+playwright install chromium
+python main.py
+```
+
+## First-Time Setup
+
+1. Add an account via the dashboard
+2. Launch the app, log in to the platform in the persistent browser session
+3. The session is saved — subsequent posts are automated

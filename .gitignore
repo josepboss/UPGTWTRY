@@ -1,25 +1,34 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
 
-node_modules
-dist
-dist-ssr
-*.local
+# Environment
+venv/
+.venv/
+*.env
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Database
+pilot.db
+
+# PostPilot data
+profiles/
+staged/
+debug/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-.dyad/
+Thumbs.db
+
+# Logs
+*.log

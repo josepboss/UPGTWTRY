@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostPilot — Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#2563eb', 600: '#1d4ed8', 700: '#1e40af', 800: '#1e3a8a', 900: '#172554' },
+                    },
+                    fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <style>
+        /* Smooth transitions for tab switching */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        /* Log scrolling container */
+        #log-container { scroll-behavior: smooth; }
+        /* Status indicators */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+        /* Dropzone styling */
+        .dropzone { border: 2px dashed #d1d5db; transition: all 0.2s; }
+        .dropzone.dragover { border-color: #2563eb; background: #eff6ff; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans antialiased">
+
+    <!-- ─── Top Navigation ──────────────────────────────────────── -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <!-- Logo -->
+                    <div class="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center text-white font-bold text-sm leading-none">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    </div>
+                    <h1 class="text-xl font-bold text-gray-900 tracking-tight">PostPilot</h1>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm text-gray-500 hidden sm:inline">Content Automator</span>
+                    <span id="live-indicator" class="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 px-2.5 py-1 rounded-full font-medium">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Online
+                    </span>
+                </div>
+            </div>
+        </div>
+        <!-- Tab Navigation -->
+        <nav class="border-t border-gray-100">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex -mb-px space-x-1 overflow-x-auto" id="tab-nav">
+                    <button class="tab-btn active px-4 py-3 text-sm font-medium border-b-2 border-brand-500 text-brand-600 whitespace-nowrap" data-tab="overview">Overview</button>
+                    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="accounts">Accounts</button>
+                    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="content">Content Queue</button>
+                    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="settings">Settings</button>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- TAB 1: OVERVIEW                                       -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <section id="tab-overview" class="tab-pane active">
+
+            <!-- Stat Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <p class="text-sm font-medium text-gray-500">Total Accounts</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-1">{{ total_accounts }}</p>
+                </div>
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <p class="text-sm font-medium text-gray-500">Active</p>
+                    <p class="text-3xl font-bold text-green-600 mt-1">{{ active_accounts }}</p>
+                </div>
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <p class="text-sm font-medium text-gray-500">Posted Today</p>
+                    <p class="text-3xl font-bold text-brand-500 mt-1">{{ today_posts }}</p>
+                </div>
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <p class="text-sm font-medium text-gray-500">Queue Pending</p>
+                    <p class="text-3xl font-bold text-amber-500 mt-1">{{ pending_count }}</p>
+                </div>
+            </div>
+
+            <!-- Process Queue Button + Stats -->
+            <div class="flex flex-wrap items-center gap-3 mb-4">
+                <form method="post" action="/api/system/process-queue" id="process-form">
+                    <button type="submit" class="inline-flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Process Next
+                    </button>
+                </form>
+                <span class="text-sm text-gray-400">Posted: <strong class="text-gray-600">{{ posted_count }}</strong> &middot; Failed: <strong class="text-red-500">{{ failed_count }}</strong></span>
+                <span class="text-sm text-gray-400">Active: <strong class="text-brand-500">{{ active_accounts }}</strong> &middot; Paused: <strong class="text-amber-500">{{ paused_accounts }}</strong> &middot; Needs Auth: <strong class="text-red-500">{{ flagged_accounts }}</strong></span>
+            </div>
+
+            <!-- Live Log Stream -->
+            <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div class="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+                    <h2 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        System Logs
+                    </h2>
+                    <span class="text-xs text-gray-400">Latest 30 entries</span>
+                </div>
+                <div id="log-container" class="h-72 overflow-y-auto p-4 space-y-1.5 font-mono text-xs">
+                    {% for log in recent_logs %}
+                    <div class="flex items-start gap-2">
+                        <span class="text-gray-400 w-14 flex-shrink-0">{{ log.created_at.strftime('%H:%M:%S') if log.created_at else '' }}</span>
+                        {% if log.level == 'ERROR' %}
+                        <span class="text-red-500 font-semibold w-12 flex-shrink-0">ERROR</span>
+                        {% elif log.level == 'WARN' %}
+                        <span class="text-amber-500 font-semibold w-12 flex-shrink-0">WARN</span>
+                        {% else %}
+                        <span class="text-brand-500 font-semibold w-12 flex-shrink-0">INFO</span>
+                        {% endif %}
+                        <span class="text-gray-600 break-all">{{ log.message }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-gray-400 italic">No logs yet. Start by adding accounts and queuing content.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- TAB 2: ACCOUNTS                                       -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <section id="tab-accounts" class="tab-pane">
+
+            <div class="flex items-center justify-between mb-5">
+                <h2 class="text-lg font-bold text-gray-900">Managed Accounts</h2>
+                <button onclick="document.getElementById('add-account-form').classList.toggle('hidden')" class="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-3.5 py-2 rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add Account
+                </button>
+            </div>
+
+            <!-- Add Account Form -->
+            <div id="add-account-form" class="hidden bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">New Account</h3>
+                <form method="post" action="/api/accounts/add" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <select name="platform" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                        <option value="X">X (Twitter)</option>
+                        <option value="TikTok">TikTok</option>
+                    </select>
+                    <input type="text" name="username" placeholder="Username/Email" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                    <input type="password" name="password" placeholder="Password" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                    <input type="text" name="proxy" placeholder="Proxy (optional) http://user:pass@ip:port" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                    <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">Save Account</button>
+                </form>
+            </div>
+
+            <!-- Accounts Grid -->
+            {% if accounts %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for acct in accounts %}
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-lg {% if acct.platform == 'X' %}bg-gray-900{% else %}bg-black{% endif %} flex items-center justify-center text-white text-xs font-bold">
+                                {{ acct.platform[0] }}
+                            </div>
+                            <div>
+                                <p class="font-semibold text-gray-900 text-sm">{{ acct.username }}</p>
+                                <span class="text-xs text-gray-400">{{ acct.platform }}</span>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full
+                            {% if acct.status == 'Active' %}bg-green-50 text-green-700
+                            {% elif acct.status == 'Paused' %}bg-amber-50 text-amber-700
+                            {% elif acct.status == 'Needs Auth' %}bg-orange-50 text-orange-700
+                            {% else %}bg-red-50 text-red-700{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full {% if acct.status == 'Active' %}bg-green-500{% elif acct.status == 'Paused' %}bg-amber-400{% elif acct.status == 'Needs Auth' %}bg-orange-400{% else %}bg-red-500{% endif %}"></span>
+                            {{ acct.status }}
+                        </span>
+                    </div>
+                    <div class="text-xs text-gray-400 space-y-1 mb-3">
+                        {% if acct.proxy_string %}
+                        <p>Proxy: <span class="text-gray-500">{{ acct.proxy_string[:30] }}...</span></p>
+                        {% else %}
+                        <p class="italic">No proxy</p>
+                        {% endif %}
+                    </div>
+                    <div class="flex gap-2">
+                        <form method="post" action="/api/accounts/{{ acct.id }}/toggle" class="inline toggle-form">
+                            <button type="submit" class="text-xs font-medium px-3 py-1.5 rounded-lg
+                                {% if acct.status == 'Active' %}bg-amber-50 text-amber-600 hover:bg-amber-100
+                                {% else %}bg-green-50 text-green-600 hover:bg-green-100{% endif %} transition-colors">
+                                {% if acct.status == 'Active' %}Pause{% else %}Activate{% endif %}
+                            </button>
+                        </form>
+                        <form method="post" action="/api/accounts/{{ acct.id }}/delete" class="inline delete-form" onsubmit="return confirm('Delete this account and all its queued content?')">
+                            <button type="submit" class="text-xs font-medium px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors">Remove</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <!-- Empty state -->
+            <div class="bg-white rounded-xl border border-gray-200 p-12 text-center shadow-sm">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-700 mb-1">No Accounts Yet</h3>
+                <p class="text-sm text-gray-400 mb-4">Add your first social media account to get started.</p>
+                <button onclick="document.getElementById('add-account-form').classList.remove('hidden'); document.querySelector('[data-tab=\"accounts\"]').click();" class="inline-flex items-center gap-1.5 text-sm font-medium text-white bg-brand-500 hover:bg-brand-600 px-4 py-2 rounded-lg transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add Your First Account
+                </button>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- TAB 3: CONTENT QUEUE                                  -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <section id="tab-content" class="tab-pane">
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                <!-- Queue Form -->
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <h2 class="text-sm font-semibold text-gray-700 mb-3">Queue New Content</h2>
+                    <form method="post" action="/api/queue/add" enctype="multipart/form-data" class="space-y-4">
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Account</label>
+                            <select name="account_id" required class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                                <option value="">Select an account...</option>
+                                {% for acct in accounts %}
+                                <option value="{{ acct.id }}">{{ acct.username }} ({{ acct.platform }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Caption / Text</label>
+                            <textarea name="caption" rows="3" placeholder="Write your post caption here..." class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none resize-none"></textarea>
+                        </div>
+                        <div>
+                            <label class="text-xs font-medium text-gray-500 mb-1 block">Media (video/image)</label>
+                            <div class="dropzone rounded-lg p-6 text-center cursor-pointer" id="dropzone" onclick="document.getElementById('media-upload').click()">
+                                <input type="file" name="media" id="media-upload" accept="image/*,video/*" class="hidden" onchange="handleFileSelect(event)">
+                                <svg class="w-8 h-8 text-gray-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                                <p class="text-sm text-gray-400" id="file-label">Click to upload or drag &amp; drop</p>
+                                <p class="text-xs text-gray-300 mt-1">MP4, MOV, JPG, PNG (max 512MB)</p>
+                            </div>
+                        </div>
+                        <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                            Add to Queue
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Queue Table -->
+                <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                        <h2 class="text-sm font-semibold text-gray-700">Queue</h2>
+                        <span class="text-xs text-gray-400">{{ queue|length }} items</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                                <tr>
+                                    <th class="text-left px-4 py-2.5 font-medium">Account</th>
+                                    <th class="text-left px-4 py-2.5 font-medium">Caption</th>
+                                    <th class="text-left px-4 py-2.5 font-medium">Status</th>
+                                    <th class="text-left px-4 py-2.5 font-medium">Time</th>
+                                    <th class="text-right px-4 py-2.5 font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                {% for item in queue %}
+                                <tr class="hover:bg-gray-50">
+                                    <td class="px-4 py-3 text-gray-700">#{{ item.account_id }}</td>
+                                    <td class="px-4 py-3 text-gray-600 max-w-[180px] truncate">{{ item.caption[:50] or '<em class="text-gray-300">no text</em>' }}</td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
+                                            {% if item.status == 'Posted' %}bg-green-50 text-green-700
+                                            {% elif item.status == 'Pending' %}bg-blue-50 text-blue-700
+                                            {% elif item.status == 'Processing' %}bg-purple-50 text-purple-700
+                                            {% elif item.status == 'Failed' %}bg-red-50 text-red-700
+                                            {% else %}bg-gray-50 text-gray-600{% endif %}">
+                                            {{ item.status }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">{{ item.created_at.strftime('%H:%M %m/%d') if item.created_at else '—' }}</td>
+                                    <td class="px-4 py-3 text-right">
+                                        {% if item.status == 'Failed' %}
+                                        <form method="post" action="/api/queue/{{ item.id }}/retry" class="inline">
+                                            <button type="submit" class="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline">Retry</button>
+                                        </form>
+                                        {% endif %}
+                                        <form method="post" action="/api/queue/{{ item.id }}/delete" class="inline ml-2" onsubmit="return confirm('Delete this queue item?')">
+                                            <button type="submit" class="text-xs font-medium text-red-500 hover:text-red-600 hover:underline">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="px-4 py-12 text-center text-gray-400">
+                                        <svg class="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                        <p class="text-sm">Queue is empty</p>
+                                        <p class="text-xs text-gray-300 mt-0.5">Add content above to get started.</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- TAB 4: SETTINGS                                       -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <section id="tab-settings" class="tab-pane">
+
+            <div class="max-w-xl">
+                <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                    <h2 class="text-base font-bold text-gray-900 mb-1">Safety &amp; Pacing</h2>
+                    <p class="text-xs text-gray-400 mb-6">These global settings help you avoid detection and rate limits.</p>
+
+                    <form method="post" action="/api/settings/update" class="space-y-5">
+                        <!-- Max Posts Per Day -->
+                        <div>
+                            <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1.5">
+                                <span>Max Posts Per Day</span>
+                                <span class="text-brand-500 font-semibold" id="max-posts-display">{{ max_posts }}</span>
+                            </label>
+                            <input type="range" name="max_posts" min="1" max="50" value="{{ max_posts }}" class="w-full accent-brand-500" oninput="document.getElementById('max-posts-display').textContent = this.value">
+                            <div class="flex justify-between text-xs text-gray-400 mt-0.5">
+                                <span>1</span>
+                                <span>50</span>
+                            </div>
+                        </div>
+
+                        <!-- Minimum Delay -->
+                        <div>
+                            <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1.5">
+                                <span>Min Delay Between Posts (min)</span>
+                                <span class="text-brand-500 font-semibold" id="min-delay-display">{{ min_delay }}</span>
+                            </label>
+                            <input type="range" name="min_delay" min="1" max="120" value="{{ min_delay }}" class="w-full accent-brand-500" oninput="document.getElementById('min-delay-display').textContent = this.value">
+                            <div class="flex justify-between text-xs text-gray-400 mt-0.5">
+                                <span>1 min</span>
+                                <span>120 min</span>
+                            </div>
+                        </div>
+
+                        <!-- Safe Mode Toggle -->
+                        <div>
+                            <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1.5">
+                                <span>Safe Mode</span>
+                                <span class="text-xs text-gray-400">Enforces daily limits and delays</span>
+                            </label>
+                            <div class="flex gap-4">
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="safe_mode" value="true" {% if safe_mode == 'true' %}checked{% endif %} class="text-brand-500 focus:ring-brand-500">
+                                    <span class="text-sm text-gray-700">On</span>
+                                </label>
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="safe_mode" value="false" {% if safe_mode == 'false' %}checked{% endif %} class="text-brand-500 focus:ring-brand-500">
+                                    <span class="text-sm text-gray-700">Off</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button type="submit" class="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                                Save Settings
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Info card -->
+                <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                    <p class="font-medium mb-1">⚠️ First-Time Setup Required</p>
+                    <p class="text-amber-700">After adding an account, you need to log in <strong>once manually</strong>. PostPilot uses persistent browser profiles — launch the app, navigate to the platform's login page within the browser context, and log in. The session will be saved for future automated posts.</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ─── JavaScript ────────────────────────────────────────── -->
+    <script>
+        // ── Tab Switching ──
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('active', 'text-brand-600', 'border-brand-500');
+                    b.classList.add('text-gray-500', 'border-transparent');
+                });
+                this.classList.add('active', 'text-brand-600', 'border-brand-500');
+                this.classList.remove('text-gray-500', 'border-transparent');
+
+                document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+                document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+            });
+        });
+
+        // ── Dropzone UX ──
+        const dropzone = document.getElementById('dropzone');
+        const fileLabel = document.getElementById('file-label');
+
+        dropzone.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => {
+            dropzone.classList.remove('dragover');
+        });
+        dropzone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length) {
+                document.getElementById('media-upload').files = files;
+                fileLabel.textContent = files[0].name;
+            }
+        });
+
+        function handleFileSelect(e) {
+            if (e.target.files.length) {
+                fileLabel.textContent = e.target.files[0].name;
+            }
+        }
+
+        // ── Live Log Streaming ──
+        function fetchLogs() {
+            fetch('/api/logs')
+                .then(r => r.json())
+                .then(logs => {
+                    const container = document.getElementById('log-container');
+                    if (!container) return;
+                    // Only re-render if we have new logs
+                    const existing = container.querySelectorAll('div').length;
+                    if (logs.length === 0 || (existing > 0 && logs[0].id === container.dataset.lastId)) return;
+
+                    container.dataset.lastId = logs[0]?.id || '';
+                    container.innerHTML = logs.map(log => {
+                        const levelClass = log.level === 'ERROR' ? 'text-red-500' : log.level === 'WARN' ? 'text-amber-500' : 'text-brand-500';
+                        return `<div class="flex items-start gap-2">
+                            <span class="text-gray-400 w-14 flex-shrink-0">${log.time}</span>
+                            <span class="${levelClass} font-semibold w-12 flex-shrink-0">${log.level}</span>
+                            <span class="text-gray-600 break-all">${log.message}</span>
+                        </div>`;
+                    }).join('');
+                    container.scrollTop = container.scrollHeight;
+                })
+                .catch(() => {});
+        }
+
+        // Poll every 5 seconds
+        setInterval(fetchLogs, 5000);
+
+        // ── Auto-refresh on form submits ──
+        document.querySelectorAll('.toggle-form, .delete-form, #process-form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                fetch(this.action, { method: 'POST' })
+                    .then(() => window.location.reload())
+                    .catch(() => window.location.reload());
+            });
+        });
+    </script>
+</body>
+</html>
