@@ -15,6 +15,7 @@
 ├── models.py            # SQLAlchemy database models
 ├── editor.py            # FFmpeg media processing engine
 ├── automation.py        # Playwright automation for X & TikTok
+├── scraper.py           # Content ingestion engine (Reddit, TikTok, YouTube)
 ├── templates/
 │   └── dashboard.html   # Main admin dashboard
 ├── profiles/            # Browser persistent profiles (one per account)
@@ -37,6 +38,12 @@
 | POST | `/api/settings/update` | Update global settings |
 | GET | `/api/logs` | Fetch recent system logs |
 | POST | `/api/system/process-queue` | Process next pending item |
+| POST | `/api/scraper/run` | Trigger manual scrape cycle |
+| POST | `/api/scraper/sources/add` | Add scraper source |
+| POST | `/api/scraper/sources/{id}/toggle` | Toggle source active/paused |
+| POST/DELETE | `/api/scraper/sources/{id}/delete` | Remove source |
+| POST | `/api/scraper/settings/update` | Update scraper config |
+| GET | `/api/scraper/logs` | Fetch scrape logs |
 
 ## Running
 

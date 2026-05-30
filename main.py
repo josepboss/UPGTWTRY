@@ -19,10 +19,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from models import (
     init_db, SessionLocal, Account, ContentQueue,
-    SystemSettings, SystemLog,
+    SystemSettings, SystemLog, TargetSource, ScrapeLog,
 )
 from editor import process_media
 from automation import post_to_platform
+from scraper import run_scrape_cycle
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
@@ -118,25 +119,39 @@ async def dashboard_page(request: Request):
         safe_mode = SystemSettings.get(db, "safe_mode", "true")
 
         # Recent logs
-        recent_logs = db.query(SystemLog).order_by(SystemLog.id.desc()).limit(30).all()
-
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
-            "accounts": accounts,
-            "queue": queue,
-            "total_accounts": total_accounts,
-            "active_accounts": active_accounts,
-            "paused_accounts": paused_accounts,
-            "flagged_accounts": flagged_accounts,
-            "pending_count": pending_count,
-            "posted_count": posted_count,
-            "failed_count": failed_count,
-            "today_posts": today_posts,
-            "max_posts": max_posts,
-            "min_delay": min_delay,
-            "safe_mode": safe_mode,
-            "recent_logs": recent_logs,
-        })
+                recent_logs = db.query(SystemLog).order_by(SystemLog.id.desc()).limit(30).all()
+        
+                # Scraper data
+                scraper_sources = db.query(TargetSource).order_by(TargetSource.created_at.desc()).all()
+                scrape_logs = db.query(ScrapeLog).order_by(ScrapeLog.id.desc()).limit(20).all()
+                scraper_enabled = SystemSettings.get(db, "scraper_enabled", "true")
+                scraper_max_daily = SystemSettings.get(db, "scraper_max_daily", "5")
+                scraper_min_upvotes = SystemSettings.get(db, "scraper_min_upvotes", "1000")
+                scraper_target_account = SystemSettings.get(db, "scraper_target_account", "")
+        
+                return templates.TemplateResponse("dashboard.html", {
+                    "request": request,
+                    "accounts": accounts,
+                    "queue": queue,
+                    "total_accounts": total_accounts,
+                    "active_accounts": active_accounts,
+                    "paused_accounts": paused_accounts,
+                    "flagged_accounts": flagged_accounts,
+                    "pending_count": pending_count,
+                    "posted_count": posted_count,
+                    "failed_count": failed_count,
+                    "today_posts": today_posts,
+                    "max_posts": max_posts,
+                    "min_delay": min_delay,
+                    "safe_mode": safe_mode,
+                    "recent_logs": recent_logs,
+                    "scraper_sources": scraper_sources,
+                    "scrape_logs": scrape_logs,
+                    "scraper_enabled": scraper_enabled,
+                    "scraper_max_daily": scraper_max_daily,
+                    "scraper_min_upvotes": scraper_min_upvotes,
+                    "scraper_target_account": scraper_target_account,
+                })
     finally:
         db.close()
 
@@ -347,6 +362,135 @@ async def update_settings(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  SCRAPER API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/scraper/sources/add")
+async def add_scraper_source(
+    platform: str = Form(...),
+    name: str = Form(...),
+    url: str = Form(""),
+):
+    """Add a new content source for the scraper to monitor."""
+    db = SessionLocal()
+    try:
+        source = TargetSource(
+            platform=platform,
+            name=name,
+            url=url,
+            active=1,
+        )
+        db.add(source)
+        db.commit()
+        add_log("INFO", f"Scraper source added: {platform}/{name}")
+        return RedirectResponse(url="/dashboard", status_code=303)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@app.post("/api/scraper/sources/{source_id}/toggle")
+async def toggle_scraper_source(source_id: int):
+    """Toggle a scraper source on/off."""
+    db = SessionLocal()
+    try:
+        source = db.query(TargetSource).filter(TargetSource.id == source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        source.active = 0 if source.active else 1
+        db.commit()
+        status = "active" if source.active else "paused"
+        add_log("INFO", f"Scraper source #{source_id} set to {status}")
+        return {"active": source.active}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@app.post("/api/scraper/sources/{source_id}/delete")
+@app.delete("/api/scraper/sources/{source_id}")
+async def delete_scraper_source(source_id: int):
+    """Remove a scraper source."""
+    db = SessionLocal()
+    try:
+        source = db.query(TargetSource).filter(TargetSource.id == source_id).first()
+        if not source:
+            raise HTTPException(status_code=404, detail="Source not found")
+        db.delete(source)
+        db.commit()
+        add_log("INFO", f"Scraper source #{source_id} deleted")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@app.post("/api/scraper/settings/update")
+async def update_scraper_settings(
+    scraper_enabled: str = Form("true"),
+    scraper_max_daily: int = Form(5),
+    scraper_min_upvotes: int = Form(1000),
+    scraper_target_account: str = Form(""),
+):
+    """Update scraper configuration."""
+    db = SessionLocal()
+    try:
+        SystemSettings.set(db, "scraper_enabled", scraper_enabled)
+        SystemSettings.set(db, "scraper_max_daily", str(scraper_max_daily))
+        SystemSettings.set(db, "scraper_min_upvotes", str(scraper_min_upvotes))
+        SystemSettings.set(db, "scraper_target_account", scraper_target_account)
+        add_log("INFO", "Scraper settings updated")
+        return RedirectResponse(url="/dashboard", status_code=303)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@app.get("/api/scraper/logs")
+async def get_scrape_logs():
+    """Return recent scrape logs as JSON."""
+    db = SessionLocal()
+    try:
+        logs = db.query(ScrapeLog).order_by(ScrapeLog.id.desc()).limit(20).all()
+        return [
+            {
+                "id": log.id,
+                "source": log.source_name,
+                "title": log.title[:60],
+                "status": log.status,
+                "time": log.created_at.strftime("%H:%M %m/%d") if log.created_at else "",
+            }
+            for log in logs
+        ]
+    finally:
+        db.close()
+
+
+@app.post("/api/scraper/run")
+async def run_scraper_manual():
+    """Manually trigger a scrape cycle."""
+    add_log("INFO", "Manual scraper run triggered")
+    try:
+        result = await run_scrape_cycle()
+        return result
+    except Exception as exc:
+        add_log("ERROR", f"Manual scraper run failed: {exc}")
+        return {"status": "error", "message": str(exc)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  LOGS API
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -487,6 +631,21 @@ async def scheduled_queue_processor():
         await process_next_queue_item()
     except Exception as exc:
         add_log("ERROR", f"Scheduled processor error: {exc}")
+
+
+# ─── Schedule the scraper to run daily at 2:00 AM ────────────────────────────
+
+@scheduler.scheduled_job("cron", hour=2, minute=0, id="daily_scraper", replace_existing=True)
+async def scheduled_scraper():
+    """Run every day at 2:00 AM: scrape and queue viral content."""
+    print("[Scheduler] Running daily scraper cycle...")
+    add_log("INFO", "Starting daily scrape cycle")
+    try:
+        result = await run_scrape_cycle()
+        queued = result.get("videos_queued", 0)
+        add_log("INFO", f"Daily scrape complete: {queued} items queued")
+    except Exception as exc:
+        add_log("ERROR", f"Daily scraper error: {exc}")
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

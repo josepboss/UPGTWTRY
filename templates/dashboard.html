@@ -61,8 +61,9 @@
                     <button class="tab-btn active px-4 py-3 text-sm font-medium border-b-2 border-brand-500 text-brand-600 whitespace-nowrap" data-tab="overview">Overview</button>
                     <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="accounts">Accounts</button>
                     <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="content">Content Queue</button>
-                    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="settings">Settings</button>
-                </div>
+                    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="scraper">Scraper</button>
+                                        <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap" data-tab="settings">Settings</button>
+                                    </div>
             </div>
         </nav>
     </header>
@@ -329,11 +330,166 @@
         </section>
 
         <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- TAB 4: SETTINGS                                       -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <section id="tab-settings" class="tab-pane">
-
-            <div class="max-w-xl">
+                <!-- TAB 4: SCRAPER                                       -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <section id="tab-scraper" class="tab-pane">
+        
+                    <!-- Scraper Config -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-sm font-semibold text-gray-700">Scraper Configuration</h2>
+                            <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full
+                                {% if scraper_enabled == 'true' %}bg-green-50 text-green-700{% else %}bg-gray-50 text-gray-500{% endif %}">
+                                <span class="w-1.5 h-1.5 rounded-full {% if scraper_enabled == 'true' %}bg-green-500{% else %}bg-gray-400{% endif %}"></span>
+                                {{ 'Enabled' if scraper_enabled == 'true' else 'Disabled' }}
+                            </span>
+                        </div>
+        
+                        <form method="post" action="/api/scraper/settings/update" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Enabled</label>
+                                <select name="scraper_enabled" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                    <option value="true" {% if scraper_enabled == 'true' %}selected{% endif %}>Enabled</option>
+                                    <option value="false" {% if scraper_enabled == 'false' %}selected{% endif %}>Disabled</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Max Videos / Day</label>
+                                <input type="number" name="scraper_max_daily" value="{{ scraper_max_daily }}" min="1" max="20"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Min Upvotes/Views</label>
+                                <input type="number" name="scraper_min_upvotes" value="{{ scraper_min_upvotes }}" min="100"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs font-medium text-gray-500 mb-1 block">Target Account</label>
+                                <select name="scraper_target_account" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                    <option value="">Auto-select first active</option>
+                                    {% for acct in accounts %}
+                                    <option value="{{ acct.id }}" {% if scraper_target_account == acct.id|string %}selected{% endif %}>{{ acct.username }} ({{ acct.platform }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2 lg:col-span-4">
+                                <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">Save Scraper Settings</button>
+                            </div>
+                        </form>
+        
+                        <div class="flex gap-2">
+                            <form method="post" action="/api/scraper/run" id="scraper-run-form">
+                                <button type="submit" class="inline-flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    Run Scraper Now
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+        
+                    <!-- Source Manager -->
+                    <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mb-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-sm font-semibold text-gray-700">Content Sources</h2>
+                            <button onclick="document.getElementById('add-source-form').classList.toggle('hidden')" class="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 px-2.5 py-1.5 rounded-lg transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                Add Source
+                            </button>
+                        </div>
+        
+                        <div id="add-source-form" class="hidden mb-4 p-4 bg-gray-50 rounded-lg">
+                            <form method="post" action="/api/scraper/sources/add" class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <select name="platform" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                    <option value="reddit">Reddit</option>
+                                    <option value="tiktok">TikTok</option>
+                                    <option value="youtube">YouTube</option>
+                                </select>
+                                <input type="text" name="name" placeholder="Subreddit / @handle / Channel" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                <input type="text" name="url" placeholder="Full URL (optional)" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+                                <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors">Add</button>
+                            </form>
+                        </div>
+        
+                        {% if scraper_sources %}
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {% for src in scraper_sources %}
+                            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div>
+                                    <span class="text-xs font-medium text-gray-400 uppercase">{{ src.platform }}</span>
+                                    <p class="text-sm font-medium text-gray-800">{{ src.name }}</p>
+                                    {% if src.last_scraped %}
+                                    <p class="text-xs text-gray-400">Last: {{ src.last_scraped.strftime('%m/%d %H:%M') if src.last_scraped else 'never' }}</p>
+                                    {% endif %}
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full {% if src.active %}bg-green-500{% else %}bg-gray-300{% endif %}"></span>
+                                    <form method="post" action="/api/scraper/sources/{{ src.id }}/toggle" class="inline">
+                                        <button type="submit" class="text-xs text-gray-500 hover:text-gray-700">{% if src.active %}Pause{% else %}Activate{% endif %}</button>
+                                    </form>
+                                    <form method="post" action="/api/scraper/sources/{{ src.id }}/delete" class="inline" onsubmit="return confirm('Delete this source?')">
+                                        <button type="submit" class="text-xs text-red-500 hover:text-red-600">✕</button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-8 text-gray-400">
+                            <svg class="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                            <p class="text-sm">No sources configured</p>
+                            <p class="text-xs text-gray-300 mt-0.5">Add Reddit subreddits, TikTok handles, or YouTube channels above.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+        
+                    <!-- Scrape Logs -->
+                    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                        <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                            <h2 class="text-sm font-semibold text-gray-700">Scrape Log</h2>
+                            <span class="text-xs text-gray-400">Last 20 items</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="text-left px-4 py-2.5 font-medium">Source</th>
+                                        <th class="text-left px-4 py-2.5 font-medium">Title</th>
+                                        <th class="text-left px-4 py-2.5 font-medium">Status</th>
+                                        <th class="text-left px-4 py-2.5 font-medium">Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    {% for slog in scrape_logs %}
+                                    <tr class="hover:bg-gray-50">
+                                        <td class="px-4 py-3 text-xs text-gray-500">{{ slog.source_name }}</td>
+                                        <td class="px-4 py-3 text-gray-600 max-w-[200px] truncate">{{ slog.title[:60] }}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full
+                                                {% if slog.status == 'queued' %}bg-green-50 text-green-700
+                                                {% elif slog.status == 'failed' %}bg-red-50 text-red-700
+                                                {% else %}bg-blue-50 text-blue-700{% endif %}">
+                                                {{ slog.status }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3 text-xs text-gray-400">{{ slog.created_at.strftime('%H:%M %m/%d') if slog.created_at else '—' }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm">No scrape activity yet. Add sources and run the scraper.</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+        
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <!-- TAB 5: SETTINGS                                       -->
+                <!-- ═══════════════════════════════════════════════════════ -->
+                <section id="tab-settings" class="tab-pane">
+        
+                    <div class="max-w-xl">
                 <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
                     <h2 class="text-base font-bold text-gray-900 mb-1">Safety &amp; Pacing</h2>
                     <p class="text-xs text-gray-400 mb-6">These global settings help you avoid detection and rate limits.</p>
@@ -474,7 +630,7 @@
         setInterval(fetchLogs, 5000);
 
         // ── Auto-refresh on form submits ──
-        document.querySelectorAll('.toggle-form, .delete-form, #process-form').forEach(form => {
+        document.querySelectorAll('.toggle-form, .delete-form, #process-form, #scraper-run-form').forEach(form => {
             form.addEventListener('submit', function(e) {
                 e.preventDefault();
                 fetch(this.action, { method: 'POST' })

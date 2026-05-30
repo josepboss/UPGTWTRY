@@ -81,11 +81,24 @@ def process_media(source_path: str, output_dir: str = None) -> str:
         ])
 
     cmd.append(output_path)
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        raise RuntimeError(f"FFmpeg processing failed:\n{result.stderr}")
-
-    print(f"[Editor] Processed: {os.path.basename(source_path)} -> {os.path.basename(output_path)}")
-    return output_path
+    
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    
+        if result.returncode != 0:
+            raise RuntimeError(f"FFmpeg processing failed:\n{result.stderr}")
+    
+        print(f"[Editor] Processed: {os.path.basename(source_path)} -> {os.path.basename(output_path)}")
+        return output_path
+    
+    
+    def clean_and_alter_video(input_path: str, output_path: str) -> str:
+        """
+        Scraper-compatible alias for process_media.
+        Takes an explicit input and output path, processes the video,
+        and returns the output path.
+    
+        This is the function called by scraper.py.
+        """
+        output_dir = os.path.dirname(output_path)
+        os.makedirs(output_dir, exist_ok=True)
+        return process_media(input_path, output_dir=output_dir)

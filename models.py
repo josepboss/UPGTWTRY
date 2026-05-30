@@ -98,6 +98,42 @@ class SystemLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+# ─── Target Sources (Scraper) ────────────────────────────────────────────────
+class TargetSource(Base):
+    """Content sources monitored by the scraper engine (subreddits, TikTok
+    handles, YouTube channels)."""
+    __tablename__ = "target_sources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    platform = Column(String(32), nullable=False)                    # reddit, tiktok, youtube
+    name = Column(String(256), nullable=False)                       # subreddit name, handle, channel id
+    url = Column(String(512), default="")                            # full URL if applicable
+    active = Column(Integer, default=1)                              # 1 = active, 0 = paused
+    last_scraped = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<TargetSource(id={self.id}, {self.platform}:{self.name}, active={self.active})>"
+
+
+# ─── Scrape Logs ─────────────────────────────────────────────────────────────
+class ScrapeLog(Base):
+    """Records of every scraping run — what was found, downloaded, queued."""
+    __tablename__ = "scrape_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, index=True)                          # FK to TargetSource.id
+    source_name = Column(String(256), default="")
+    title = Column(String(512), default="")
+    url = Column(String(512), default="")
+    downloaded_path = Column(String(512), default="")                # temp download path
+    processed_path = Column(String(512), default="")                 # editor.py output path
+    queue_id = Column(Integer, default=0)                            # FK to ContentQueue.id
+    status = Column(String(32), default="scraped")                   # scraped, downloaded, processed, queued, failed
+    message = Column(Text, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 # ─── Bootstrap ───────────────────────────────────────────────────────────────
 def init_db():
     """Create all tables and seed default system settings."""
@@ -105,11 +141,15 @@ def init_db():
     session = SessionLocal()
 
     # Seed defaults if not present
-    defaults = {
-        "max_posts_per_day": "10",
-        "min_delay_minutes": "15",
-        "safe_mode": "true",
-    }
+        defaults = {
+            "max_posts_per_day": "10",
+            "min_delay_minutes": "15",
+            "safe_mode": "true",
+            "scraper_enabled": "true",
+            "scraper_max_daily": "5",
+            "scraper_min_upvotes": "1000",
+            "scraper_target_account": "",
+        }
     for key, val in defaults.items():
         if not session.query(SystemSettings).filter(SystemSettings.key == key).first():
             session.add(SystemSettings(key=key, value=val, description=""))
