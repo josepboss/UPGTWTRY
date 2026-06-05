@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -59,6 +60,16 @@ async def lifespan(app: FastAPI):
 # ─── FastAPI App ─────────────────────────────────────────────────────────────
 
 app = FastAPI(title="PostPilot", version="1.0.0", lifespan=lifespan)
+
+# CORS — required so the local Chrome Extension (running on your PC) can fetch
+# tasks from the VPS without being blocked by browser security policies.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -573,22 +584,27 @@ async def get_next_task(profile_id: int = 1, platform: str = "x"):
             .first()
         )
         if not task:
-            return {"status": "no_tasks"}
-
-        return {
-            "status": "ok",
-            "task": {
-                "id": task.id,
-                "profile_id": task.profile_id,
-                "platform": task.platform,
-                "task_type": task.task_type,
-                "caption": task.caption or "",
-                "file_path": task.file_path or "",
-                "video_url": task.video_url or "",
-            },
-        }
-    finally:
-        db.close()
+                    return {"status": "no_tasks"}
+        
+                # Resolve VPS base URL from settings to build an absolute video URL
+                vps_base = SystemSettings.get(db, "vps_base_url", "http://localhost:8000")
+                relative_url = (task.video_url or "").lstrip("/")
+                absolute_video_url = f"{vps_base.rstrip('/')}/{relative_url}" if relative_url else ""
+        
+                return {
+                    "status": "ok",
+                    "task": {
+                        "id": task.id,
+                        "profile_id": task.profile_id,
+                        "platform": task.platform,
+                        "task_type": task.task_type,
+                        "caption": task.caption or "",
+                        "file_path": task.file_path or "",                   # absolute local path for os.remove()
+                        "video_url": absolute_video_url,                     # full public URL for the extension
+                    },
+                }
+            finally:
+                db.close()
 
 
 @app.post("/api/cleanup-task/{task_id}")
