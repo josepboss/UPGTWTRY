@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "PostPilot Extension",
+  "version": "1.0.0",
+  "description": "Stealth DOM automation for PostPilot — publish and engage across X, TikTok, and Instagram.",
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://twitter.com/*",
+        "https://x.com/*",
+        "https://www.tiktok.com/*",
+        "https://www.instagram.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "PostPilot",
+    "default_popup": "popup.html"
+  }
+}

@@ -5,7 +5,8 @@
 - **Backend:** Python FastAPI
 - **Database:** SQLite + SQLAlchemy ORM
 - **Task Queue:** APScheduler (async)
-- **Automation:** Playwright (async API with stealth features)
+- **Automation:** Chrome Extension (stealth DOM) on local machine
+- **Content Scraper:** yt-dlp + Reddit JSON API + MD5 dedup (VideoCache)
 - **Frontend:** Jinja2 Templates + Tailwind CSS (CDN)
 
 ## Project Structure
@@ -14,13 +15,19 @@
 ├── main.py              # FastAPI app entry point (routes, scheduler, API)
 ├── models.py            # SQLAlchemy database models
 ├── editor.py            # FFmpeg media processing engine
-├── automation.py        # Playwright automation for X & TikTok
+├── automation.py        # Playwright automation for X & TikTok (legacy)
 ├── scraper.py           # Content ingestion engine (Reddit, TikTok, YouTube)
+├── extension/           # Chrome Extension for stealth DOM automation
+│   ├── manifest.json
+│   ├── background.js
+│   ├── content.js
+│   ├── popup.html
+│   └── popup.js
 ├── templates/
 │   └── dashboard.html   # Main admin dashboard
 ├── profiles/            # Browser persistent profiles (one per account)
 ├── staged/              # Temporary processed media files
-├── static/              # Static assets (images, etc.)
+├── static/              # Static assets + /videos/ for extension consumption
 ├── requirements.txt     # Python dependencies
 ```
 
@@ -44,6 +51,10 @@
 | POST/DELETE | `/api/scraper/sources/{id}/delete` | Remove source |
 | POST | `/api/scraper/settings/update` | Update scraper config |
 | GET | `/api/scraper/logs` | Fetch scrape logs |
+| GET | `/api/next-task?profile_id={id}&platform={s}` | Fetch next extension task |
+| POST | `/api/cleanup-task/{id}` | Mark task complete & delete .mp4 |
+| GET | `/api/extension/config` | Return VPS URL for extension config |
+| POST | `/api/settings/update-vps` | Update VPS URL + profile ID |
 
 ## Running
 

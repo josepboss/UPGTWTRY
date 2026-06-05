@@ -131,10 +131,39 @@ class ScrapeLog(Base):
     queue_id = Column(Integer, default=0)                            # FK to ContentQueue.id
     status = Column(String(32), default="scraped")                   # scraped, downloaded, processed, queued, failed
     message = Column(Text, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-
-
-# ─── Bootstrap ───────────────────────────────────────────────────────────────
+        created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    
+    # ─── Video Cache (dedup) ─────────────────────────────────────────────────────
+    class VideoCache(Base):
+        """MD5-hash deduplication for scraped content. Records persist forever
+        so the same video is never downloaded or processed twice."""
+        __tablename__ = "video_cache"
+    
+        id = Column(Integer, primary_key=True, index=True)
+        video_hash = Column(String(40), unique=True, nullable=False, index=True)
+        source_url = Column(String(512), default="")
+        added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    
+    # ─── Task Queue (Chrome Extension workflow) ──────────────────────────────────
+    class TaskQueue(Base):
+        """Tasks consumed by the local Chrome Extension for stealth DOM publishing
+        and engagement activity."""
+        __tablename__ = "task_queue"
+    
+        id = Column(Integer, primary_key=True, index=True)
+        profile_id = Column(Integer, index=True, default=1)              # 1, 2, 3 — Chrome profile
+        platform = Column(String(32), index=True, nullable=False)        # x, tiktok, instagram
+        task_type = Column(String(32), default="publish")                # publish, interact
+        caption = Column(Text, nullable=True)
+        file_path = Column(String(512), nullable=True)                   # absolute path on VPS disk
+        video_url = Column(String(512), nullable=True)                   # public static route URL (/videos/...)
+        is_completed = Column(Boolean, default=False)
+        created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    
+    # ─── Bootstrap ───────────────────────────────────────────────────────────────
 def init_db():
     """Create all tables and seed default system settings."""
     Base.metadata.create_all(bind=engine)
@@ -149,6 +178,8 @@ def init_db():
         "scraper_max_daily": "5",
         "scraper_min_upvotes": "1000",
         "scraper_target_account": "",
+        "scraper_profile_id": "1",
+        "vps_base_url": "http://localhost:8000",
     }
     for key, val in defaults.items():
         if not session.query(SystemSettings).filter(SystemSettings.key == key).first():

@@ -20,6 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from models import (
     init_db, SessionLocal, Account, ContentQueue,
     SystemSettings, SystemLog, TargetSource, ScrapeLog,
+    VideoCache, TaskQueue,
 )
 from editor import process_media
 from automation import post_to_platform
@@ -63,6 +64,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Mount static files (images, etc.)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Serve processed videos at /videos/ (consumed by Chrome Extension)
+VIDEOS_DIR = BASE_DIR / "static" / "videos"
+VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/videos", StaticFiles(directory=str(VIDEOS_DIR)), name="videos")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -129,29 +135,41 @@ async def dashboard_page(request: Request):
         scraper_min_upvotes = SystemSettings.get(db, "scraper_min_upvotes", "1000")
         scraper_target_account = SystemSettings.get(db, "scraper_target_account", "")
 
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
-            "accounts": accounts,
-            "queue": queue,
-            "total_accounts": total_accounts,
-            "active_accounts": active_accounts,
-            "paused_accounts": paused_accounts,
-            "flagged_accounts": flagged_accounts,
-            "pending_count": pending_count,
-            "posted_count": posted_count,
-            "failed_count": failed_count,
-            "today_posts": today_posts,
-            "max_posts": max_posts,
-            "min_delay": min_delay,
-            "safe_mode": safe_mode,
-            "recent_logs": recent_logs,
-            "scraper_sources": scraper_sources,
-            "scrape_logs": scrape_logs,
-            "scraper_enabled": scraper_enabled,
-            "scraper_max_daily": scraper_max_daily,
-            "scraper_min_upvotes": scraper_min_upvotes,
-            "scraper_target_account": scraper_target_account,
-        })
+        # TaskQueue stats
+                task_queue = db.query(TaskQueue).order_by(TaskQueue.id.desc()).limit(30).all()
+                pending_tasks = sum(1 for t in task_queue if not t.is_completed)
+                completed_tasks = sum(1 for t in task_queue if t.is_completed)
+                vps_base_url = SystemSettings.get(db, "vps_base_url", "http://localhost:8000")
+                scraper_profile_id = SystemSettings.get(db, "scraper_profile_id", "1")
+        
+                return templates.TemplateResponse("dashboard.html", {
+                    "request": request,
+                    "accounts": accounts,
+                    "queue": queue,
+                    "total_accounts": total_accounts,
+                    "active_accounts": active_accounts,
+                    "paused_accounts": paused_accounts,
+                    "flagged_accounts": flagged_accounts,
+                    "pending_count": pending_count,
+                    "posted_count": posted_count,
+                    "failed_count": failed_count,
+                    "today_posts": today_posts,
+                    "max_posts": max_posts,
+                    "min_delay": min_delay,
+                    "safe_mode": safe_mode,
+                    "recent_logs": recent_logs,
+                    "scraper_sources": scraper_sources,
+                    "scrape_logs": scrape_logs,
+                    "scraper_enabled": scraper_enabled,
+                    "scraper_max_daily": scraper_max_daily,
+                    "scraper_min_upvotes": scraper_min_upvotes,
+                    "scraper_target_account": scraper_target_account,
+                    "vps_base_url": vps_base_url,
+                    "scraper_profile_id": scraper_profile_id,
+                    "task_queue": task_queue,
+                    "pending_tasks": pending_tasks,
+                    "completed_tasks": completed_tasks,
+                })
     finally:
         db.close()
 
@@ -351,18 +369,39 @@ async def update_settings(
         SystemSettings.set(db, "min_delay_minutes", str(min_delay),
                            "Minimum delay in minutes between posts")
         SystemSettings.set(db, "safe_mode", safe_mode,
-                           "Global safety toggle")
-        add_log("INFO", "System settings updated")
-        return RedirectResponse(url="/dashboard", status_code=303)
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(exc))
-    finally:
-        db.close()
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-#  SCRAPER API
+                                   "Global safety toggle")
+                add_log("INFO", "System settings updated")
+                return RedirectResponse(url="/dashboard", status_code=303)
+            except Exception as exc:
+                db.rollback()
+                raise HTTPException(status_code=500, detail=str(exc))
+            finally:
+                db.close()
+        
+        
+        @app.post("/api/settings/update-vps")
+        async def update_vps_settings(
+            vps_base_url: str = Form("http://localhost:8000"),
+            scraper_profile_id: str = Form("1"),
+        ):
+            """Update VPS connection settings used by the Chrome Extension."""
+            db = SessionLocal()
+            try:
+                SystemSettings.set(db, "vps_base_url", vps_base_url,
+                                   "Public URL for Chrome Extension to reach this VPS")
+                SystemSettings.set(db, "scraper_profile_id", scraper_profile_id,
+                                   "Chrome profile ID assigned to scraper tasks")
+                add_log("INFO", "VPS config updated")
+                return RedirectResponse(url="/dashboard", status_code=303)
+            except Exception as exc:
+                db.rollback()
+                raise HTTPException(status_code=500, detail=str(exc))
+            finally:
+                db.close()
+        
+        
+        # ═══════════════════════════════════════════════════════════════════════════════
+        #  SCRAPER API
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/scraper/sources/add")
@@ -509,6 +548,95 @@ async def get_logs():
             }
             for log in logs
         ]
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  TASK QUEUE API (consumed by Chrome Extension)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/next-task")
+async def get_next_task(profile_id: int = 1, platform: str = "x"):
+    """Return the oldest uncompleted task for a given Chrome profile + platform.
+    The extension calls this in its recursive setTimeout loop."""
+    db = SessionLocal()
+    try:
+        task = (
+            db.query(TaskQueue)
+            .filter(
+                TaskQueue.profile_id == profile_id,
+                TaskQueue.platform == platform,
+                TaskQueue.is_completed == False,
+            )
+            .order_by(TaskQueue.created_at.asc())
+            .first()
+        )
+        if not task:
+            return {"status": "no_tasks"}
+
+        return {
+            "status": "ok",
+            "task": {
+                "id": task.id,
+                "profile_id": task.profile_id,
+                "platform": task.platform,
+                "task_type": task.task_type,
+                "caption": task.caption or "",
+                "file_path": task.file_path or "",
+                "video_url": task.video_url or "",
+            },
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/cleanup-task/{task_id}")
+async def cleanup_task(task_id: int):
+    """Mark a task as completed. If it was a 'publish' task, delete the
+    heavy .mp4 from disk. The VideoCache hash record is kept forever."""
+    db = SessionLocal()
+    try:
+        task = db.query(TaskQueue).filter(TaskQueue.id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        was_publish = task.task_type == "publish"
+        file_path = task.file_path
+
+        task.is_completed = True
+        db.commit()
+        add_log("INFO", f"Task #{task_id} ({task.task_type}) marked completed")
+
+        # Delete the .mp4 from disk if publish task
+        if was_publish and file_path and os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+                add_log("INFO", f"Cleaned up file: {file_path}")
+            except Exception as exc:
+                add_log("WARN", f"Failed to delete {file_path}: {exc}")
+
+        return {"status": "ok", "task_id": task_id}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        db.close()
+
+
+@app.get("/api/extension/config")
+async def extension_config():
+    """Return VPS connection details for the Chrome Extension to use."""
+    db = SessionLocal()
+    try:
+        base_url = SystemSettings.get(db, "vps_base_url", "http://localhost:8000")
+        return {
+            "vps_base_url": base_url,
+            "poll_min_minutes": 45,
+            "poll_max_minutes": 90,
+        }
     finally:
         db.close()
 

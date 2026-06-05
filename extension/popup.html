@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PostPilot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 280px;
+      padding: 16px;
+      background: #f8f9fa;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .logo {
+      width: 28px;
+      height: 28px;
+      background: #6366f1;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+    .dot.idle { background: #9ca3af; }
+    .dot.error { background: #ef4444; }
+    .label {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .value {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1f2937;
+    }
+    .config {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .config label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .config input, .config select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .config input:focus, .config select:focus {
+      border-color: #6366f1;
+      box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+    }
+    .btn {
+      width: 100%;
+      padding: 8px;
+      background: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn:hover { background: #4f46e5; }
+    .footer {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">P</div>
+    <h1>PostPilot</h1>
+  </div>
+
+  <div class="status" id="status">
+    <span class="dot" id="statusDot"></span>
+    <div>
+      <div class="label">Status</div>
+      <div class="value" id="statusText">Loading...</div>
+    </div>
+  </div>
+
+  <div class="config">
+    <label>VPS Base URL</label>
+    <input type="text" id="vpsUrl" placeholder="http://your-vps:8000" />
+
+    <label>Profile ID</label>
+    <select id="profileId">
+      <option value="1">Profile 1</option>
+      <option value="2">Profile 2</option>
+      <option value="3">Profile 3</option>
+    </select>
+
+    <label>Platform</label>
+    <select id="platform">
+      <option value="x">X (Twitter)</option>
+      <option value="tiktok">TikTok</option>
+      <option value="instagram">Instagram</option>
+    </select>
+
+    <button class="btn" id="saveBtn">Save</button>
+  </div>
+
+  <div class="footer">v1.0.0 — PostPilot</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

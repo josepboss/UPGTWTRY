@@ -10,6 +10,8 @@ import os
 import re
 import json
 import random
+import hashlib
+import shutil
 import subprocess
 import asyncio
 import uuid
@@ -20,7 +22,7 @@ import httpx
 
 from models import (
     SessionLocal, TargetSource, ContentQueue, ScrapeLog,
-    SystemSettings, SystemLog, Account,
+    SystemSettings, SystemLog, Account, VideoCache, TaskQueue,
 )
 from editor import clean_and_alter_video
 
@@ -410,107 +412,182 @@ async def run_scrape_cycle() -> dict:
 
         queued_count = 0
 
-        for source in sources:
-            if queued_count >= max_daily:
-                break
-
-            videos = []
-
-            if source.platform == "reddit":
-                # Source name is the subreddit name (e.g., "damnthatsinteresting")
-                name = source.name.strip().lstrip("r/")
-                videos = await scrape_reddit(name, min_upvotes=min_upvotes)
-            elif source.platform == "tiktok":
-                handle = source.name.strip().lstrip("@")
-                videos = await scrape_tiktok(handle, min_views=min_upvotes)
-            elif source.platform == "youtube":
-                videos = await scrape_youtube(source.url or source.name,
-                                               min_views=min_upvotes)
-            else:
-                continue
-
-            summary["videos_found"] += len(videos)
-
-            # Update last_scraped timestamp
-            source.last_scraped = datetime.now(timezone.utc)
-            db.commit()
-
-            for vid in videos:
-                if queued_count >= max_daily:
-                    break
-
-                # Download video
-                print(f"[Scraper] Downloading: {vid['url'][:80]}...")
-                dl_path = _download_video(vid["url"])
-                if not dl_path:
-                    summary["errors"].append(f"Download failed: {vid['url'][:60]}")
-                    continue
-
-                summary["videos_downloaded"] += 1
-
-                # Process through editor.py
-                try:
-                    processed_path = clean_and_alter_video(
-                        dl_path,
-                        str(PROCESSED_DIR / f"scraped_{uuid.uuid4().hex[:12]}.mp4"),
-                    )
-                except Exception as exc:
-                    summary["errors"].append(f"Processing error: {exc}")
-                    # Clean up raw download
-                    try:
-                        os.remove(dl_path)
-                    except Exception:
-                        pass
-                    continue
-
-                # Generate caption
-                caption = generate_caption(vid["title"], source.platform)
-
-                # Queue the content
-                queue_item = ContentQueue(
-                    account_id=int(target_account_id),
-                    media_path=processed_path,
-                    caption=caption,
-                    status="Pending",
-                    scheduled_time=_random_schedule(),
-                    log_message=f"Auto-scraped from {vid['source_name']}",
-                )
-                db.add(queue_item)
-                db.commit()
-                db.refresh(queue_item)
-
-                # Log the scrape
-                scrape_entry = ScrapeLog(
-                    source_id=source.id,
-                    source_name=vid["source_name"],
-                    title=vid["title"][:200],
-                    url=vid["url"],
-                    downloaded_path=dl_path,
-                    processed_path=processed_path,
-                    queue_id=queue_item.id,
-                    status="queued",
-                )
-                db.add(scrape_entry)
-                db.commit()
-
-                # Delete raw download to save space
-                try:
-                    os.remove(dl_path)
-                except Exception:
-                    pass
-
-                queued_count += 1
-                summary["videos_queued"] = queued_count
-
-                # Log to system
-                log_entry = SystemLog(
-                    level="INFO",
-                    message=f"Auto-queued '{vid['title'][:50]}...' from {vid['source_name']} (item #{queue_item.id})",
-                )
-                db.add(log_entry)
-                db.commit()
-
-                print(f"[Scraper] ✅ Queued item #{queue_item.id}: {vid['title'][:50]}")
+        # Resolve target account for platform mapping
+                target_platform = "x"  # default
+                target_profile_id = int(SystemSettings.get(db, "scraper_profile_id", "1"))
+                if target_account_id:
+                    acct = db.query(Account).filter(Account.id == int(target_account_id)).first()
+                    if acct:
+                        raw = acct.platform.lower()
+                        target_platform = {"x": "x", "twitter": "x",
+                                           "tiktok": "tiktok",
+                                           "instagram": "instagram"}.get(raw, "x")
+        
+                for source in sources:
+                    if queued_count >= max_daily:
+                        break
+        
+                    videos = []
+        
+                    if source.platform == "reddit":
+                        # Source name is the subreddit name (e.g., "damnthatsinteresting")
+                        name = source.name.strip().lstrip("r/")
+                        videos = await scrape_reddit(name, min_upvotes=min_upvotes)
+                    elif source.platform == "tiktok":
+                        handle = source.name.strip().lstrip("@")
+                        videos = await scrape_tiktok(handle, min_views=min_upvotes)
+                    elif source.platform == "youtube":
+                        videos = await scrape_youtube(source.url or source.name,
+                                                       min_views=min_upvotes)
+                    else:
+                        continue
+        
+                    summary["videos_found"] += len(videos)
+        
+                    # Update last_scraped timestamp
+                    source.last_scraped = datetime.now(timezone.utc)
+                    db.commit()
+        
+                    for vid in videos:
+                        if queued_count >= max_daily:
+                            break
+        
+                        # Download video
+                        print(f"[Scraper] Downloading: {vid['url'][:80]}...")
+                        dl_path = _download_video(vid["url"])
+                        if not dl_path:
+                            summary["errors"].append(f"Download failed: {vid['url'][:60]}")
+                            continue
+        
+                        # ─── MD5 Dedup Check ────────────────────────────────────────
+                        try:
+                            with open(dl_path, "rb") as f:
+                                raw_bytes = f.read()
+                            video_hash = hashlib.md5(raw_bytes).hexdigest()
+                        except Exception as exc:
+                            summary["errors"].append(f"Hash error: {exc}")
+                            try:
+                                os.remove(dl_path)
+                            except Exception:
+                                pass
+                            continue
+        
+                        existing = db.query(VideoCache).filter(
+                            VideoCache.video_hash == video_hash
+                        ).first()
+                        if existing:
+                            print(f"[Scraper] ⏭ Duplicate (hash={video_hash[:12]}...) — skipping")
+                            summary["errors"].append(
+                                f"Duplicate video (hash={video_hash[:12]}...)"
+                            )
+                            try:
+                                os.remove(dl_path)
+                            except Exception:
+                                pass
+                            continue
+        
+                        summary["videos_downloaded"] += 1
+        
+                        # Process through editor.py
+                        try:
+                            processed_path = clean_and_alter_video(
+                                dl_path,
+                                str(PROCESSED_DIR / f"scraped_{uuid.uuid4().hex[:12]}.mp4"),
+                            )
+                        except Exception as exc:
+                            summary["errors"].append(f"Processing error: {exc}")
+                            try:
+                                os.remove(dl_path)
+                            except Exception:
+                                pass
+                            continue
+        
+                        # Copy processed file to /static/videos/ for extension access
+                        video_filename = f"scraped_{uuid.uuid4().hex[:12]}.mp4"
+                        static_video_path = str(
+                            BASE_DIR / "static" / "videos" / video_filename
+                        )
+                        try:
+                                            shutil.copy2(processed_path, static_video_path)
+                        except Exception as exc:
+                            summary["errors"].append(f"Copy to static failed: {exc}")
+                            try:
+                                os.remove(dl_path)
+                            except Exception:
+                                pass
+                            continue
+        
+                        # Record in VideoCache (kept forever)
+                        db.add(VideoCache(
+                            video_hash=video_hash,
+                            source_url=vid["url"],
+                        ))
+                        db.commit()
+        
+                        # Generate caption
+                        caption = generate_caption(vid["title"], source.platform)
+        
+                        # Build video_url (relative to VPS base)
+                        video_url = f"/videos/{video_filename}"
+        
+                        # Create TaskQueue item for Chrome Extension
+                        task_item = TaskQueue(
+                            profile_id=target_profile_id,
+                            platform=target_platform,
+                            task_type="publish",
+                            caption=caption,
+                            file_path=static_video_path,
+                            video_url=video_url,
+                            is_completed=False,
+                        )
+                        db.add(task_item)
+                        db.commit()
+                        db.refresh(task_item)
+        
+                        # Also keep the ContentQueue entry for dashboard visibility
+                        queue_item = ContentQueue(
+                            account_id=int(target_account_id) if target_account_id else 0,
+                            media_path=static_video_path,
+                            caption=caption,
+                            status="Pending",
+                            scheduled_time=_random_schedule(),
+                            log_message=f"Auto-scraped from {vid['source_name']} → task #{task_item.id}",
+                        )
+                        db.add(queue_item)
+                        db.commit()
+        
+                        # Log the scrape
+                        scrape_entry = ScrapeLog(
+                            source_id=source.id,
+                            source_name=vid["source_name"],
+                            title=vid["title"][:200],
+                            url=vid["url"],
+                            downloaded_path=dl_path,
+                            processed_path=processed_path,
+                            queue_id=queue_item.id,
+                            status="queued",
+                        )
+                        db.add(scrape_entry)
+                        db.commit()
+        
+                        # Delete raw download to save space
+                        try:
+                            os.remove(dl_path)
+                        except Exception:
+                            pass
+        
+                        queued_count += 1
+                        summary["videos_queued"] = queued_count
+        
+                        # Log to system
+                        log_entry = SystemLog(
+                            level="INFO",
+                            message=f"Auto-queued '{vid['title'][:50]}...' from {vid['source_name']} (task #{task_item.id})",
+                        )
+                        db.add(log_entry)
+                        db.commit()
+        
+                        print(f"[Scraper] ✅ Task #{task_item.id} queued: {vid['title'][:50]}")
 
         print(f"[Scraper] Cycle complete: {summary['videos_queued']} items queued")
         return {**summary, "message": "complete"}
