@@ -3,44 +3,40 @@
  *
  * Uses a recursive setTimeout loop (not setInterval) to poll the VPS backend
  * for tasks.  After each poll cycle it randomises the next check between
- * 45–90 minutes to avoid predictable patterns.
+ * 45-90 minutes to avoid predictable patterns.
  *
- * Each Chrome profile running this extension uses a unique PROFILE_ID.
+ * Each Chrome profile running this extension uses a unique PROFILE_ID set in
+ * the extension popup.  The PLATFORM is also configurable via popup storage.
+ *
+ * Interact tasks open the platform's feed page; publish tasks open the
+ * specific upload/compose page.
  */
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  USER CONFIGURATION — update these values for your setup
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const CONFIG = {
-  VPS_BASE_URL: "http://localhost:8000",
-  PROFILE_ID: 1,                  // 1, 2, or 3 — must be unique per Chrome profile
-  PLATFORM: "x",                  // "x", "tiktok", or "instagram"
-  POLL_MIN_MS: 45 * 60 * 1000,    // 45 minutes
-  POLL_MAX_MS: 90 * 60 * 1000,    // 90 minutes
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 let activeTaskId = null;
+let activeTabId = null;
 let isProcessingTask = false;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function randomBetween(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function randomWait() {
-  const ms =
-    Math.floor(Math.random() * (CONFIG.POLL_MAX_MS - CONFIG.POLL_MIN_MS + 1)) +
-    CONFIG.POLL_MIN_MS;
-  console.log(`[PostPilot] Next poll in ${Math.round(ms / 60000)} minutes`);
+  const ms = randomBetween(45 * 60 * 1000, 90 * 60 * 1000);
+  console.log(`[PostPilot] Next poll in ~${Math.round(ms / 60000)} minutes`);
   return ms;
 }
 
 async function apiGet(path) {
-  const url = `${CONFIG.VPS_BASE_URL}${path}`;
+  const base = await getVpsBaseUrl();
+  const url = `${base}${path}`;
   console.log(`[PostPilot] GET ${url}`);
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -48,11 +44,46 @@ async function apiGet(path) {
 }
 
 async function apiPost(path) {
-  const url = `${CONFIG.VPS_BASE_URL}${path}`;
+  const base = await getVpsBaseUrl();
+  const url = `${base}${path}`;
   console.log(`[PostPilot] POST ${url}`);
   const resp = await fetch(url, { method: "POST" });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.json();
+}
+
+async function getVpsBaseUrl() {
+  const stored = await chrome.storage.local.get(["vpsConfig"]);
+  return (stored.vpsConfig && stored.vpsConfig.vps_base_url) || "http://localhost:8000";
+}
+
+async function getConfigFromStorage() {
+  const stored = await chrome.storage.local.get(["vpsConfig", "profileId", "platform"]);
+  return {
+    vps_base_url: (stored.vpsConfig && stored.vpsConfig.vps_base_url) || "http://localhost:8000",
+    profile_id: parseInt(stored.profileId || (stored.vpsConfig && stored.vpsConfig.profile_id) || 1, 10),
+    platform: stored.platform || (stored.vpsConfig && stored.vpsConfig.platform) || "x",
+  };
+}
+
+function getTargetUrl(task) {
+  const { platform, task_type } = task;
+
+  if (task_type === "interact") {
+    switch (platform) {
+      case "x":         return "https://x.com/home";
+      case "tiktok":    return "https://www.tiktok.com/foryou";
+      case "instagram": return "https://www.instagram.com/";
+      default:          return "https://x.com/home";
+    }
+  }
+
+  switch (platform) {
+    case "x":         return "https://x.com/compose/post";
+    case "tiktok":    return "https://www.tiktok.com/creator-center/upload";
+    case "instagram": return "https://www.instagram.com/";
+    default:          return "https://x.com/compose/post";
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -61,23 +92,10 @@ async function apiPost(path) {
 
 async function pollLoop() {
   try {
-    // Fetch config from VPS on first run
-    const stored = await chrome.storage.local.get(["vpsConfig"]);
-    if (!stored.vpsConfig) {
-      try {
-        const cfg = await apiGet("/api/extension/config");
-        await chrome.storage.local.set({ vpsConfig: cfg });
-        CONFIG.VPS_BASE_URL = cfg.vps_base_url || CONFIG.VPS_BASE_URL;
-      } catch (e) {
-        console.warn("[PostPilot] Could not fetch config, using defaults:", e);
-      }
-    } else {
-      CONFIG.VPS_BASE_URL =
-        stored.vpsConfig.vps_base_url || CONFIG.VPS_BASE_URL;
-    }
+    const config = await getConfigFromStorage();
 
     const data = await apiGet(
-      `/api/next-task?profile_id=${CONFIG.PROFILE_ID}&platform=${CONFIG.PLATFORM}`
+      `/api/next-task?profile_id=${config.profile_id}&platform=${config.platform}`
     );
 
     if (data.status === "ok" && data.task) {
@@ -89,40 +107,24 @@ async function pollLoop() {
       isProcessingTask = true;
       activeTaskId = task.id;
 
-      // Store the task so content.js can read it
       await chrome.storage.local.set({ activeTask: task });
 
-      // Open the appropriate platform URL
-      let targetUrl;
-      switch (task.platform) {
-        case "x":
-          targetUrl = "https://x.com/home";
-          break;
-        case "tiktok":
-          targetUrl = "https://www.tiktok.com/creator-center/upload";
-          break;
-        case "instagram":
-          targetUrl = "https://www.instagram.com/";
-          break;
-        default:
-          targetUrl = "https://x.com/home";
-      }
-
+      const targetUrl = getTargetUrl(task);
       const tab = await chrome.tabs.create({ url: targetUrl, active: true });
-      console.log(`[PostPilot] Opened tab ${tab.id} for ${task.platform}`);
-
-      // Wait for content script to complete before resuming poll loop.
-      // The content script signals completion via storage change.
+      activeTabId = tab.id;
+      console.log(`[PostPilot] Opened tab ${tab.id}: ${targetUrl}`);
     } else {
       console.log(`[PostPilot] No tasks — waiting...`);
       isProcessingTask = false;
       activeTaskId = null;
+      activeTabId = null;
       scheduleNext();
     }
   } catch (err) {
     console.error(`[PostPilot] Poll error:`, err);
     isProcessingTask = false;
     activeTaskId = null;
+    activeTabId = null;
     scheduleNext();
   }
 }
@@ -132,29 +134,32 @@ async function pollLoop() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
-  if (area === "local" && changes.taskResult) {
-    const result = changes.taskResult.newValue;
-    console.log(`[PostPilot] Task result:`, result);
+  if (area !== "local" || !changes.taskResult) return;
 
-    // Cleanup on VPS
-    try {
-      if (result.taskId) {
-        await apiPost(`/api/cleanup-task/${result.taskId}`);
-        console.log(`[PostPilot] Cleanup done for task #${result.taskId}`);
-      }
-    } catch (e) {
-      console.error(`[PostPilot] Cleanup failed:`, e);
+  const result = changes.taskResult.newValue;
+  console.log(`[PostPilot] Task result:`, result);
+
+  try {
+    if (result.taskId) {
+      await apiPost(`/api/cleanup-task/${result.taskId}`);
+      console.log(`[PostPilot] Cleanup done for task #${result.taskId}`);
     }
-
-    // Clear active task
-    await chrome.storage.local.remove(["activeTask", "taskResult"]);
-
-    isProcessingTask = false;
-    activeTaskId = null;
-
-    // Schedule next poll
-    scheduleNext();
+  } catch (e) {
+    console.error(`[PostPilot] Cleanup failed:`, e);
   }
+
+  if (activeTabId) {
+    try {
+      await chrome.tabs.remove(activeTabId);
+      console.log(`[PostPilot] Closed tab ${activeTabId}`);
+    } catch (_) { /* tab may already be closed */ }
+    activeTabId = null;
+  }
+
+  await chrome.storage.local.remove(["activeTask", "taskResult"]);
+  isProcessingTask = false;
+  activeTaskId = null;
+  scheduleNext();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -176,20 +181,16 @@ function scheduleNext() {
 //  BOOT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Start the first poll after a short delay (gives extension time to load)
 chrome.runtime.onInstalled.addListener(() => {
-  console.log(`[PostPilot] Installed — profile ${CONFIG.PROFILE_ID}`);
+  console.log(`[PostPilot] Installed — starting...`);
   setTimeout(pollLoop, 5000);
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  console.log(`[PostPilot] Started — profile ${CONFIG.PROFILE_ID}`);
+  console.log(`[PostPilot] Started — starting...`);
   setTimeout(pollLoop, 5000);
 });
 
-// Also start immediately if the service worker wakes up
 setTimeout(pollLoop, 5000);
 
-console.log(
-  `[PostPilot] Background initialized (profile=${CONFIG.PROFILE_ID}, platform=${CONFIG.PLATFORM})`
-);
+console.log(`[PostPilot] Background initialized`);
